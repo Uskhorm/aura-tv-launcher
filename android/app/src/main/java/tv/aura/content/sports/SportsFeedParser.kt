@@ -35,7 +35,7 @@ object SportsFeedParser {
             if (!Regex("[0-9]{1,20}").matches(id)) return@mapNotNull null
             val title = event.text("strEvent") ?: return@mapNotNull null
             val start = parseStart(event.text("strTimestamp"), event.text("dateEvent"), event.text("strTime"))
-            val art = listOf("strThumb", "strFanart", "strBanner").firstNotNullOfOrNull { field ->
+            val art = listOf("strFanart", "strThumb").firstNotNullOfOrNull { field ->
                 event.text(field)?.takeIf { validArtwork(it) }
             }
             SportsFixture(id, title, event.text("strLeague").orEmpty(), event.text("strSport").orEmpty(), start,
@@ -58,7 +58,7 @@ object SportsFeedParser {
         val enabled = focus.map { it.lowercase(Locale.ROOT) }.toSet()
         return events.asSequence().distinctBy { it.id }.filter { event ->
             val sport = event.sport.lowercase(Locale.ROOT)
-            val wanted = (sport == "cricket" && "cricket" in enabled && relevantCricket(event)) ||
+            val wanted = (sport == "motorsport" && "f1" in enabled && event.league.contains("Formula 1", true)) ||
                 (sport in setOf("soccer", "football") && "football" in enabled &&
                     (event.league.contains("Premier League", true) || event.league.contains("Champions League", true)))
             val start = event.startsAtMs
@@ -83,9 +83,6 @@ object SportsFeedParser {
             else -> start.format(DateTimeFormatter.ofPattern("EEE d MMM · HH:mm", Locale.UK)).uppercase(Locale.UK)
         }
     }
-
-    private fun relevantCricket(event: SportsFixture) = event.title.contains("India", true) ||
-        event.league.contains("Indian Premier", true) || event.league.contains("ICC", true) || event.league.contains("World Cup", true)
 
     private fun validArtwork(url: String): Boolean = runCatching {
         val uri = java.net.URI(url)

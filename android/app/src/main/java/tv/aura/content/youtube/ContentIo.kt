@@ -13,8 +13,8 @@ internal object ContentHttp {
     suspend fun get(url: String, maxBytes: Int = 512 * 1024): String {
         val started = System.nanoTime()
         val connection = URL(url).openConnection() as HttpURLConnection
-        connection.connectTimeout = 1_100
-        connection.readTimeout = 1_100
+        connection.connectTimeout = 4_000
+        connection.readTimeout = 4_000
         // Do not follow arbitrary redirects (especially important for companion-supplied handles).
         connection.instanceFollowRedirects = false
         connection.setRequestProperty("User-Agent", "Mozilla/5.0 AuraTV/1.0")
@@ -26,7 +26,9 @@ internal object ContentHttp {
                 val buffer = ByteArray(8192)
                 while (true) {
                     currentCoroutineContext().ensureActive()
-                    check((System.nanoTime() - started) / 1_000_000 < 2_000) { "Feed deadline" }
+                    val remainingMs = 8_000 - (System.nanoTime() - started) / 1_000_000
+                    check(remainingMs > 0) { "Feed deadline" }
+                    connection.readTimeout = remainingMs.coerceAtMost(4_000).toInt().coerceAtLeast(1)
                     val count = input.read(buffer)
                     if (count < 0) break
                     check(output.size() + count <= maxBytes) { "Response too large" }

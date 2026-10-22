@@ -70,9 +70,14 @@ object YouTubeFeedParser {
         return result
     }
 
+    fun isLatinTitle(title: String): Boolean = title.codePoints().allMatch { cp ->
+        Character.UnicodeScript.of(cp) in setOf(Character.UnicodeScript.LATIN,
+            Character.UnicodeScript.COMMON, Character.UnicodeScript.INHERITED)
+    }
+
     fun select(videos: List<YouTubeVideo>, nowMs: Long = System.currentTimeMillis(), limit: Int = 10): List<YouTubeVideo> {
         val counts = mutableMapOf<String, Int>()
-        return videos.asSequence().filter { it.publishedAtMs <= nowMs + 5 * 60_000 }
+        return videos.asSequence().filter { isLatinTitle(it.title) && isLatinTitle(it.channelName) && it.publishedAtMs <= nowMs + 5 * 60_000 }
             .distinctBy { it.id }.sortedByDescending { it.publishedAtMs }
             .filter { video ->
                 val count = counts.getOrDefault(video.channelId, 0)
@@ -100,5 +105,7 @@ object YouTubeFeedParser {
 
     /** A title is only a candidate, never proof that a broadcast is currently live. */
     fun liveCandidate(title: String): Boolean = Regex("(?i)\\bLIVE\\b|लाइव|सीधा प्रसारण").containsMatchIn(title)
-    fun confirmsLive(watchHtml: String): Boolean = Regex("\"isLiveNow\"\\s*:\\s*true").containsMatchIn(watchHtml)
+    fun confirmsLive(watchHtml: String): Boolean = Regex(
+        "\"liveBroadcastDetails\"\\s*:\\s*\\{[^}]{0,2000}\"isLiveNow\"\\s*:\\s*true"
+    ).containsMatchIn(watchHtml)
 }
