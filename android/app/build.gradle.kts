@@ -33,16 +33,22 @@ android {
     }
 
     buildFeatures { compose = true }
+    testOptions { unitTests.isReturnDefaultValues = true }
 }
 
 dependencies {
     val bom = platform("androidx.compose:compose-bom:2026.09.00")
     implementation(bom)
+    implementation("io.github.kyant0:capsule:2.1.3")
+    implementation("com.airbnb.android:lottie-compose:6.7.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("net.sf.kxml:kxml2:2.3.0")
+    testImplementation("org.json:json:20250517")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.animation:animation")
@@ -50,3 +56,4 @@ dependencies {
     implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.palette:palette-ktx:1.0.0")
 }
+
