@@ -110,6 +110,7 @@ class HomeState(private val activity: MainActivity) {
     private var longFired = false
     private var swallowUntilUp = false
     private var weatherJob: Job? = null
+    private var reloadJob: Job? = null
 
     val focused: AppEntry? get() = apps.getOrNull(focus)
     /** The app whose Top Shelf is showing: the focused top-row app, or the last one. */
@@ -122,7 +123,8 @@ class HomeState(private val activity: MainActivity) {
     // ------------------------------------------------------------------ apps
     fun reload(dropArtFor: String? = null) {
         if (dropArtFor != null) visuals.remove(dropArtFor)
-        scope.launch {
+        reloadJob?.cancel()
+        reloadJob = scope.launch {
             val list = withContext(Dispatchers.IO) { repo.arrange(repo.installed(), prefs.order, prefs.hidden) }
             val keepKey = focused?.key
             apps = list
@@ -143,7 +145,7 @@ class HomeState(private val activity: MainActivity) {
     /** Decode the photos for the top row ahead of time so the shelf never flashes. */
     private fun prefetchShelf() {
         val photos = apps.take(COLS).flatMap { Catalog.slides(it).map { s -> s.photo } }.distinct()
-        scope.launch(Dispatchers.IO) { photos.take(4).forEach { runCatching { Photos.load(activity, it) } } }
+        scope.launch(Dispatchers.IO) { photos.take(2).forEach { runCatching { Photos.load(activity, it) } } }
     }
 
     fun colorPalette(): List<Color> {
@@ -471,7 +473,13 @@ class HomeState(private val activity: MainActivity) {
                 action = { makeDefault() }),
             SettingItem("Reset Home Screen", if (resetArmed) "Press OK Again" else null, "Put every app back in its original place.", danger = true, action = {
                 if (resetArmed) {
-                    prefs.reset(); resetArmed = false; mode = Mode.Home; focus = 0; lastTop = 0; reload(); show("Home Screen reset")
+                    prefs.reset()
+                    resetArmed = false
+                    mode = Mode.Home
+                    focus = 0
+                    lastTop = 0
+                    reload()
+                    show("Home Screen reset")
                 } else resetArmed = true
             }),
         )
