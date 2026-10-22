@@ -1,0 +1,8 @@
+HSPLtv/aura/app/**;->**(**)**
+HSPLtv/aura/ui/**;->**(**)**
+HSPLtv/aura/design/**;->**(**)**
+HSPLtv/aura/image/**;->**(**)**
+HSPLtv/aura/core/**;->**(**)**
+HSPLandroidx/compose/runtime/ComposerImpl;->**(**)**
+HSPLandroidx/compose/ui/focus/**;->**(**)**
+HSPLandroidx/compose/ui/platform/AndroidComposeView;->**(**)**
