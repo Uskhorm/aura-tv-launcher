@@ -37,7 +37,7 @@ object HomeGuard {
     private val resets = MutableStateFlow(0L)
     val resetRequests = resets.asStateFlow()
 
-    /** Call once from Application.onCreate. Captures Aura only; never captures another app's screen. */
+    /** Call once from Application.onCreate; never capture the view tree in lifecycle callbacks. */
     fun initialize(application: Application) {
         if (app != null) return
         app = application
@@ -69,7 +69,7 @@ object HomeGuard {
             override fun onActivityPaused(activity: Activity) {
                 if (!isAuraHome(activity)) return
                 foreground = false
-                HomeSnapshot.capture(activity)
+
             }
             override fun onActivityCreated(activity: Activity, state: Bundle?) = Unit
             override fun onActivityStarted(activity: Activity) = Unit
@@ -120,6 +120,12 @@ object HomeGuard {
 
     /** Explicit user escape; call before opening Amazon home or a Settings panel. */
     fun allowAmazonHome(durationMs: Long = 30_000) { service?.allowAmazon(durationMs) }
+
+    /** Explicit user request only. Availability/real sleep-wake behavior needs device verification. */
+    fun lockScreen(): Boolean {
+        val current = service ?: return false
+        return current.performGlobalAction(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)
+    }
 
     /** User-requested power menu. Fire OS may reject it; caller must check the result. */
     fun showPowerDialog(): Boolean {

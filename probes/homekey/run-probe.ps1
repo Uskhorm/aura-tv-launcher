@@ -1,4 +1,4 @@
-param([string]$Serial = '192.168.0.153:5555')
+param([string]$Serial = '192.168.0.153:5555', [switch]$PhysicalRemote)
 $ErrorActionPreference = 'Stop'
 $root = 'C:\Users\akomh\.t3\projects\tv-fix'
 $evidence = Join-Path $root ('aura-team\device\evidence\homekey-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
@@ -34,6 +34,24 @@ try {
     & adb -s $Serial shell dumpsys accessibility | Set-Content "$evidence\accessibility-probe.txt"
     & adb -s $Serial shell am start -W -n tv.aura.probe.homekey/.ProbeActivity
     Start-Sleep -Seconds 1
+    if ($PhysicalRemote) {
+        # No injected input in this mode. Operator coordinates real remote with orchestrator.
+        & adb -s $Serial shell am start -W -n com.spotify.tv.android/.SpotifyTVActivity
+        Read-Host 'Tell orchestrator READY. Press Enter only when user is ready for countdown'
+        Mark 'PHYSICAL_COUNTDOWN_3S'
+        Write-Host 'Starting in 3 seconds: T+0 MENU; T+5 BACK; T+10 short HOME; T+20 hold HOME 2 seconds'
+        Start-Sleep -Seconds 3
+        $timeline = [Diagnostics.Stopwatch]::StartNew()
+        foreach ($step in @(@(0,'MENU'),@(5,'BACK'),@(10,'SHORT_HOME'),@(20,'LONG_HOME_HOLD_2S'))) {
+            $remaining = [int]($step[0] * 1000 - $timeline.ElapsedMilliseconds)
+            if ($remaining -gt 0) { Start-Sleep -Milliseconds $remaining }
+            Write-Host ("T+" + $step[0] + " " + $step[1])
+            Mark ("PHYSICAL_T" + $step[0] + "_" + $step[1])
+        }
+        $remaining = [int](30000 - $timeline.ElapsedMilliseconds)
+        if ($remaining -gt 0) { Start-Sleep -Milliseconds $remaining }
+        Capture 'physical-settled'
+    } else {
     Mark 'control-menu-back-colours-media'
     foreach ($key in @(82, 4, 183, 184, 185, 186, 85, 85, 89, 90)) { & adb -s $Serial shell input keyevent $key; Start-Sleep -Milliseconds 250 }
     # Use an ordinary app as the starting window; do not play any content.
@@ -51,6 +69,7 @@ try {
     & adb -s $Serial shell input keyevent --longpress 3
     Start-Sleep -Seconds 7
     Capture 'long-home-settled'
+    }
     Mark 'complete'
 } finally {
     # Exact original list, including HoF and any unrelated services. Never replace it with only one service.
@@ -61,8 +80,13 @@ try {
     else { & adb -s $Serial shell settings put secure accessibility_enabled $enabledBefore }
     & adb -s $Serial shell am force-stop tv.aura.probe.homekey
     & adb -s $Serial shell settings get secure enabled_accessibility_services | Set-Content "$evidence\enabled_accessibility_services-after.txt"
+    $actualList = ((& adb -s $Serial shell settings get secure enabled_accessibility_services) -join '').Trim()
+    $actualEnabled = ((& adb -s $Serial shell settings get secure accessibility_enabled) -join '').Trim()
+    $actualEnabled | Set-Content "$evidence\accessibility_enabled-after.txt"
     & adb -s $Serial shell dumpsys accessibility | Set-Content "$evidence\accessibility-after.txt"
+    $restoreMismatch = $actualList -ne $before -or $actualEnabled -ne $enabledBefore
     Start-Sleep -Seconds 1
     if ($logger -and -not $logger.HasExited) { Stop-Process -Id $logger.Id }
     Write-Output "Evidence: $evidence"
+    if ($restoreMismatch) { throw 'RESTORE MISMATCH: inspect original and current accessibility state; stop tests' }
 }
