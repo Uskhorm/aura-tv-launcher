@@ -53,6 +53,7 @@ const val SETTINGS_KEY = "builtin:settings"
 
 /** Streaming apps that should lead the grid on a fresh install, in this order. */
 private val PREFERRED = listOf(
+    "io.gh.reisxd.tizentube.cobalt", "com.nuvio.tv", "com.amazon.firebat", "app.aksports.live", "com.spotify.tv.android",
     "com.google.android.youtube.tv", "com.google.android.youtube.tvunplugged",
     "com.netflix.ninja", "com.netflix.mediaclient",
     "com.amazon.amazonvideo.livingroom", "com.amazon.avod",
@@ -111,23 +112,13 @@ class AppRepository(private val ctx: Context) {
 
     /** Every launchable app, one per package. TV (leanback) entries win over phone ones. */
     fun installed(): List<AppEntry> {
-        val out = LinkedHashMap<String, AppEntry>()
-        for (cat in listOf(Intent.CATEGORY_LEANBACK_LAUNCHER, Intent.CATEGORY_LAUNCHER)) {
-            for (ri in query(Intent(Intent.ACTION_MAIN).addCategory(cat))) {
-                val ai = ri.activityInfo ?: continue
-                if (ai.packageName == ctx.packageName || out.containsKey(ai.packageName)) continue
-                val app = ai.applicationInfo
-                out[ai.packageName] = AppEntry(
-                    key = ai.packageName,
-                    label = ri.loadLabel(pm).toString().trim(),
-                    component = ComponentName(ai.packageName, ai.name),
-                    leanback = cat == Intent.CATEGORY_LEANBACK_LAUNCHER,
-                    system = app.flags and (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) == ApplicationInfo.FLAG_SYSTEM,
-                    category = categoryName(app),
-                )
-            }
+        return SystemAppCatalog(ctx).installed().map { app ->
+            AppEntry(app.pkg, app.label, ComponentName.unflattenFromString(app.component), app.leanback,
+                app.system, if (app.pkg == SystemAppCatalog.SETTINGS_PACKAGE) "Settings" else runCatching {
+                    @Suppress("DEPRECATION")
+                    categoryName(pm.getApplicationInfo(app.pkg, 0))
+                }.getOrNull())
         }
-        return out.values.toList()
     }
 
     /** Applies the saved order (new apps go before Settings, preferred apps first). */
@@ -154,6 +145,9 @@ class AppRepository(private val ctx: Context) {
 
     fun launchIntent(e: AppEntry): Intent? {
         val c = e.component ?: return null
+        if (c.packageName == "com.amazon.tv.launcher") runCatching {
+            (tv.aura.core.Aura.system as? AuraSystem)?.beforeAmazonNavigation?.invoke()
+        }
         return Intent(Intent.ACTION_MAIN)
             .addCategory(if (e.leanback) Intent.CATEGORY_LEANBACK_LAUNCHER else Intent.CATEGORY_LAUNCHER)
             .setComponent(c)
