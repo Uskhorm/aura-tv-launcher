@@ -44,12 +44,13 @@ class AuraImages(context: Context) : ImagePipeline, ComponentCallbacks2, AutoClo
     private val decodes = Semaphore(2)
     private val bitmapLocks = Array(64) { Mutex() }
     private val blurLocks = Array(16) { Mutex() }
-    private val paletteLock = Mutex()
+    private val paletteLocks = Array(16) { Mutex() }
     private val disk = ImageDiskCache(File(app.cacheDir, "img"))
     private val missingMaxres = LruCache<String, Boolean>(128)
     private val palettes = LruCache<String, AuraPalette>(64)
     private val pool = ScratchPool()
     private var prefetchJob: Job? = null
+    private var lastBlurKey: String? = null
     val memoryBudgetBytes: Int = run {
         val manager = app.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         // Leave room for Compose, two decode workers, app icons and the rest of the process.
@@ -87,7 +88,7 @@ class AuraImages(context: Context) : ImagePipeline, ComponentCallbacks2, AutoClo
                     if (fetched != true) return@withLock null
                 }
                 val image = decodes.withPermit { decode(file, width, height, alpha, url) }
-                if (image == null) file.delete() else remember(key, image)
+                if (image == null) disk.remove(file) else remember(key, image)
                 image?.asImageBitmap()
             } finally { disk.release(key) }
         }
@@ -103,8 +104,8 @@ class AuraImages(context: Context) : ImagePipeline, ComponentCallbacks2, AutoClo
             try {
                 if (file.exists()) {
                     val cached = decodes.withPermit { decode(file, 320, 180, false, "") }
-                    if (cached != null) { remember(key, cached); return@withLock cached.asImageBitmap() }
-                    file.delete()
+                    if (cached != null) { remember(key, cached, blurred = true); return@withLock cached.asImageBitmap() }
+                    disk.remove(file)
                 }
                 val source = bitmap(url, 320, 180)?.asAndroidBitmap() ?: return@withLock null
                 val result = decodes.withPermit {
@@ -117,7 +118,7 @@ class AuraImages(context: Context) : ImagePipeline, ComponentCallbacks2, AutoClo
                 try { writeJpeg(file, result) } catch (_: java.io.IOException) {
                     Log.d(TAG, "Blur disk cache unavailable; retaining memory result")
                 }
-                remember(key, result)
+                remember(key, result, blurred = true)
                 result.asImageBitmap()
             } finally { disk.release(key) }
         }
@@ -125,7 +126,7 @@ class AuraImages(context: Context) : ImagePipeline, ComponentCallbacks2, AutoClo
 
     override suspend fun palette(url: String): AuraPalette? = safe {
         palettes.get(url)?.let { return@safe it }
-        paletteLock.withLock {
+        paletteLocks[(url.hashCode() and Int.MAX_VALUE) % paletteLocks.size].withLock {
             palettes.get(url)?.let { return@withLock it }
             val key = disk.key("palette-v1|$url")
             val file = disk.pin(key)
@@ -135,7 +136,7 @@ class AuraImages(context: Context) : ImagePipeline, ComponentCallbacks2, AutoClo
                         val json = JSONObject(file.readText())
                         return@withLock AuraPalette(json.getInt("d"), json.getInt("v"), json.getInt("m"), json.getInt("o"))
                             .also { palettes.put(url, it) }
-                    } catch (_: Exception) { file.delete() }
+                    } catch (_: Exception) { disk.remove(file) }
                 }
                 val thumb = bitmap(url, 96, 54)?.asAndroidBitmap() ?: return@withLock null
                 val colors = decodes.withPermit { Palette.from(thumb).maximumColorCount(12).generate() }
@@ -253,11 +254,15 @@ class AuraImages(context: Context) : ImagePipeline, ComponentCallbacks2, AutoClo
         return decoded
     }
 
-    private fun remember(key: String, bitmap: Bitmap) = synchronized(memory) {
-        // Keep at most three large images in the loader. Consumers must also release old UI references.
+    private fun remember(key: String, bitmap: Bitmap, blurred: Boolean = false) = synchronized(memory) {
+        if (blurred) {
+            lastBlurKey?.takeIf { it != key }?.let { memory.remove(it) }
+            lastBlurKey = key
+        }
+        // D7: at most two sharp full-screen images. UI must release old references after transitions.
         if (bitmap.width * bitmap.height >= 640 * 360) {
             val large = memory.snapshot().filterValues { it.width * it.height >= 640 * 360 }
-            large.keys.take((large.size - 2).coerceAtLeast(0)).forEach { memory.remove(it) }
+            large.keys.take((large.size - 1).coerceAtLeast(0)).forEach { memory.remove(it) }
         }
         memory.put(key, bitmap)
     }
