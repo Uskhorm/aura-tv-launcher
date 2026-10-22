@@ -112,7 +112,7 @@ class AppRepository(private val ctx: Context) {
 
     /** Every launchable app, one per package. TV (leanback) entries win over phone ones. */
     fun installed(): List<AppEntry> {
-        return SystemAppCatalog(ctx).installed().map { app ->
+        return SystemAppCatalog(ctx).installed().filterNot { it.pkg == SystemAppCatalog.SETTINGS_PACKAGE }.map { app ->
             AppEntry(app.pkg, app.label, ComponentName.unflattenFromString(app.component), app.leanback,
                 app.system, if (app.pkg == SystemAppCatalog.SETTINGS_PACKAGE) "Settings" else runCatching {
                     @Suppress("DEPRECATION")

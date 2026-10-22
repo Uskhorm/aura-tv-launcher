@@ -12,11 +12,11 @@ import android.content.pm.PackageManager
 import android.media.tv.TvContract
 import android.media.tv.TvInputManager
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.View
 import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.graphics.ImageBitmap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -78,9 +78,19 @@ class AuraSystem(context: Context) : SystemBridge, AutoCloseable {
         set(value) { field = value; if (!closed) scope.launch { updateActions() } }
     /** One-shot homeguard bypass for Amazon UI which is hosted in HomeActivity_vNext. */
     @Volatile var beforeAmazonNavigation: (() -> Unit)? = null
+    /** Enable only after app-UID/device verification; resolver success does not prove vendor UI works. */
+    @Volatile var inputsVerified: Boolean = false
+        set(value) { field = value; if (!closed) scope.launch { updateActions() } }
+    @Volatile var sleepVerified: Boolean = false
+        set(value) { field = value; if (!closed) scope.launch { updateActions() } }
+    /** Accessibility GLOBAL_ACTION_LOCK_SCREEN, supplied by the homeguard owner. */
+    @Volatile var sleepOpener: (() -> Boolean)? = null
+        set(value) { field = value; if (!closed) scope.launch { updateActions() } }
     private var receiverRegistered = false
     private val packagesReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) { refreshApps() }
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.data?.scheme == "package" && !intent.data?.schemeSpecificPart.isNullOrBlank()) refreshApps()
+        }
     }
 
     init {
@@ -92,8 +102,7 @@ class AuraSystem(context: Context) : SystemBridge, AutoCloseable {
             addDataScheme("package")
         }
         receiverRegistered = runCatching {
-            if (Build.VERSION.SDK_INT >= 33) this.context.registerReceiver(packagesReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-            else this.context.registerReceiver(packagesReceiver, filter)
+            ContextCompat.registerReceiver(this.context, packagesReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
             true
         }.getOrDefault(false)
         refreshApps()
@@ -133,7 +142,7 @@ class AuraSystem(context: Context) : SystemBridge, AutoCloseable {
         appState.value.firstOrNull { it.pkg == pkg }?.let { catalog.artwork(it, banner) }
     }
 
-    override fun launch(target: LaunchTarget): Boolean = !closed && launchTarget(target, 0)
+    override fun launch(target: LaunchTarget): Boolean = !closed && runCatching { launchTarget(target, 0) }.getOrDefault(false)
 
     private fun launchTarget(target: LaunchTarget, depth: Int): Boolean {
         if (depth >= 12) return false
@@ -170,7 +179,12 @@ class AuraSystem(context: Context) : SystemBridge, AutoCloseable {
         scope.launch { updateActions() }
     }
 
-    private fun resumePackage(): String? = if (lastLaunchedAt > usage.lastUsedAt) lastLaunched else usage.recent.firstOrNull() ?: lastLaunched
+    private fun resumePackage(): String? {
+        val installed = appState.value.map { it.pkg }.toSet()
+        val recent = usage.recent.firstOrNull { it in installed }
+        val launched = lastLaunched?.takeIf { it in installed }
+        return if (lastLaunchedAt > usage.lastUsedAt) launched ?: recent else recent ?: launched
+    }
 
     private fun appIntent(pkg: String): Intent? = runCatching {
         if (pkg == SystemAppCatalog.SETTINGS_PACKAGE) return settingsIntents().firstOrNull { canStart(it) }
@@ -209,7 +223,8 @@ class AuraSystem(context: Context) : SystemBridge, AutoCloseable {
                 if (context.checkSelfPermission("android.permission.KILL_BACKGROUND_PROCESSES") != PackageManager.PERMISSION_GRANTED) false
                 else { scope.launch { boost() }; true }
             }
-            "sleep" -> runCatching { powerPanelOpener?.invoke() ?: false }.getOrDefault(false)
+            "sleep" -> sleepVerified && runCatching { sleepOpener?.invoke() ?: false }.getOrDefault(false)
+            "inputs" -> inputsVerified && actionIntents(id).any { start(it) }
             else -> actionIntents(id).any { start(it) }
         }
     }
@@ -239,8 +254,9 @@ class AuraSystem(context: Context) : SystemBridge, AutoCloseable {
             val available = when (id) {
                 "boost" -> context.checkSelfPermission("android.permission.KILL_BACKGROUND_PROCESSES") == PackageManager.PERMISSION_GRANTED
                 "vpn" -> appIntent(VPN_PACKAGE)?.let { canStart(it) } == true
-                "resume" -> usage.recent.isNotEmpty() || lastLaunched != null
-                "sleep" -> powerPanelOpener != null && runCatching { powerPanelAvailable?.invoke() ?: false }.getOrDefault(false)
+                "resume" -> resumePackage() != null
+                "inputs" -> inputsVerified && actionIntents(id).any { canStart(it) }
+                "sleep" -> sleepVerified && sleepOpener != null && runCatching { powerPanelAvailable?.invoke() ?: false }.getOrDefault(false)
                 else -> actionIntents(id).any { canStart(it) }
             }
             val directDisplay = id == "display" && canStart(Intent(Settings.ACTION_DISPLAY_SETTINGS).setPackage(SystemAppCatalog.SETTINGS_PACKAGE))
@@ -250,14 +266,14 @@ class AuraSystem(context: Context) : SystemBridge, AutoCloseable {
                 "bluetooth" -> "Controllers & Bluetooth"
                 "inputs" -> "Inputs"
                 "display" -> if (directDisplay) "Display & sound" else "Display · Settings"
-                "sleep" -> "Power panel"
+                "sleep" -> "Sleep"
                 "boost" -> "Boost"
                 "vpn" -> "Mullvad VPN"
                 "resume" -> "Resume last app"
                 else -> "Search"
             }, available, when (id) {
                 "display" -> if (directDisplay) null else "Open Settings, then Display & Sounds"
-                "sleep" -> "Opens Amazon quick settings; select Sleep there"
+                "sleep" -> null
                 "boost" -> "Close background apps; measured RAM change appears after completion"
                 "vpn" -> "Opens Mullvad; connection stays under your control"
                 else -> null
@@ -318,6 +334,7 @@ class AuraSystem(context: Context) : SystemBridge, AutoCloseable {
         receiverRegistered = false
         launchOptionsProvider = null
         powerPanelOpener = null
+        sleepOpener = null
         powerPanelAvailable = null
         beforeAmazonNavigation = null
         media.close()
