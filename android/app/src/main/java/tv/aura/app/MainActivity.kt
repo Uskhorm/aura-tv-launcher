@@ -41,6 +41,7 @@ class MainActivity : ComponentActivity() {
     // Refresh the grid when apps are installed, updated or removed.
     private val packages = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
+            if (i.data?.scheme != "package" || i.data?.schemeSpecificPart.isNullOrBlank()) return
             state.reload(dropArtFor = i.data?.schemeSpecificPart)
         }
     }
@@ -110,3 +111,4 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 }
+
