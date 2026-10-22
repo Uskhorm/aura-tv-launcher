@@ -12,6 +12,8 @@ import tv.aura.system.AuraSystem
 import tv.aura.content.youtube.DefaultYouTubeChannels
 import tv.aura.content.youtube.YouTubeHeroProvider
 import tv.aura.content.sports.SportsHeroProvider
+import tv.aura.content.nuvio.NuvioHeroProvider
+import tv.aura.content.prime.PrimeHeroProvider
 import tv.aura.homeguard.HomeGuard
 
 /** App-scoped services, registered before the first Activity starts. */
@@ -24,10 +26,13 @@ class AuraApplication : Application() {
             beforeAmazonNavigation = { HomeGuard.allowAmazonHome() }
             powerPanelOpener = { HomeGuard.showPowerDialog() }
             powerPanelAvailable = { HomeGuard.status().connected }
+            sleepOpener = { HomeGuard.lockScreen() }
         }
         Aura.heroProviders.clear()
         Aura.heroProviders += YouTubeHeroProvider()
         Aura.heroProviders += SportsHeroProvider()
+        Aura.heroProviders += NuvioHeroProvider()
+        Aura.heroProviders += PrimeHeroProvider()
         HomeGuard.initialize(this)
     }
 
@@ -41,5 +46,6 @@ private class BootstrapConfigStore : ConfigStore {
         mutex.withLock { state.value = transform(state.value) }
     }
 }
+
 
 
