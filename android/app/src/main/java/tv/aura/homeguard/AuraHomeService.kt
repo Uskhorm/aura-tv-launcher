@@ -24,6 +24,7 @@ class AuraHomeService : AccessibilityService() {
     private var pending = false
     private var lastAttempt = -2_000L
     private var screenOn = true
+    private val failures by lazy { getSharedPreferences("homeguard-launch-safety", Context.MODE_PRIVATE) }
     internal val curtainVisible get() = ::curtain.isInitialized && curtain.visible
 
     private val timeout = Runnable {
@@ -32,6 +33,7 @@ class AuraHomeService : AccessibilityService() {
         HomeGuard.detail = "Home launch timed out; curtain removed for safety"
         curtain.hide()
         trace("LAUNCH_TIMEOUT")
+        if (failures.getInt("attempts", 0) >= 3) pauseFailedLaunches()
     }
     private val accessibilityObserver = object : ContentObserver(main) {
         override fun onChange(selfChange: Boolean) {
@@ -47,7 +49,7 @@ class AuraHomeService : AccessibilityService() {
                 Intent.ACTION_SCREEN_OFF -> { screenOn = false; cancelTransition() }
                 Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> {
                     screenOn = true
-                    if (active()) returnHome("wake")
+                    // Preserve foreground app on wake; redirect only actual Amazon HOME windows.
                 }
                 Intent.ACTION_CLOSE_SYSTEM_DIALOGS -> {
                     // AOSP emits globalactions for long-HOME/power menus. Firmware validation pending.
@@ -62,7 +64,6 @@ class AuraHomeService : AccessibilityService() {
         HomeGuard.initialize(application as Application)
         HomeGuard.service = this
         curtain = HomeCurtain(this)
-        HomeSnapshot.preload(applicationContext)
         contentResolver.registerContentObserver(
             Settings.Secure.getUriFor(Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES), false, accessibilityObserver)
         ContextCompat.registerReceiver(this, screenReceiver, IntentFilter().apply {
@@ -70,7 +71,7 @@ class AuraHomeService : AccessibilityService() {
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_USER_PRESENT)
             addAction(Intent.ACTION_CLOSE_SYSTEM_DIALOGS)
-        }, ContextCompat.RECEIVER_EXPORTED)
+        }, ContextCompat.RECEIVER_NOT_EXPORTED)
         HomeGuard.detail = if (HomeGuard.homeOnFireEnabled(this)) "Passive: Home on Fire is enabled" else null
         trace("CONNECTED passive=${HomeGuard.homeOnFireEnabled(this)} flags=${serviceInfo.flags}")
     }
@@ -111,6 +112,29 @@ class AuraHomeService : AccessibilityService() {
     private fun returnHome(reason: String) {
         val now = SystemClock.uptimeMillis()
         if (!active() || pending || now - lastAttempt < 1_000) return
+        // Persist before launch: an Activity crash can kill this service's process too.
+        val wallNow = System.currentTimeMillis()
+        val blockedUntil = failures.getLong("blockedUntil", 0)
+        if (wallNow < blockedUntil && blockedUntil - wallNow <= 300_000) {
+            HomeGuard.detail = "Aura failed to draw 3x; guard paused 5 min"
+            return
+        }
+        val first = failures.getLong("firstAttempt", 0)
+        val count = if (wallNow - first in 0..30_000) failures.getInt("attempts", 0) else 0
+        if (count >= 3) {
+            failures.edit().putLong("blockedUntil", wallNow + 300_000).commit()
+            HomeGuard.detail = "Aura failed to draw 3x; guard paused 5 min"
+            cancelTransition()
+            trace("FAIL_OPEN durationMs=300000")
+            return
+        }
+        val saved = failures.edit().putLong("firstAttempt", if (count == 0) wallNow else first)
+            .putInt("attempts", count + 1).putLong("blockedUntil", 0).commit()
+        if (!saved) {
+            allowAmazon(120_000)
+            HomeGuard.detail = "Launch safety state unavailable; guard paused"
+            return
+        }
         lastAttempt = now
         pending = true
         HomeGuard.triggerAt = now
@@ -118,10 +142,21 @@ class AuraHomeService : AccessibilityService() {
         curtain.show()
         trace("LAUNCH_REQUEST reason=$reason")
         main.postDelayed(timeout, 8_000)
-        if (!HomeGuard.launch(this, reset = true)) cancelTransition()
+        if (!HomeGuard.launch(this, reset = true)) {
+            cancelTransition()
+            if (failures.getInt("attempts", 0) >= 3) pauseFailedLaunches()
+        }
+    }
+
+    private fun pauseFailedLaunches() {
+        failures.edit().putLong("blockedUntil", System.currentTimeMillis() + 300_000).commit()
+        cancelTransition()
+        HomeGuard.detail = "Aura failed to draw 3x; guard paused 5 min"
+        trace("FAIL_OPEN durationMs=300000")
     }
 
     internal fun onAuraDrawn() {
+        failures.edit().clear().apply()
         pending = false
         main.removeCallbacks(timeout)
         curtain.hide(fade = true)

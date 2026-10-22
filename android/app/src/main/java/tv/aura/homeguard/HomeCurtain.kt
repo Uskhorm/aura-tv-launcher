@@ -29,7 +29,7 @@ internal class HomeCurtain(private val service: AccessibilityService) {
         }.apply {
             setBackgroundColor(Color.rgb(8, 12, 20))
             scaleType = ImageView.ScaleType.CENTER_CROP
-            setImageBitmap(HomeSnapshot.frame)
+
             importantForAccessibility = ImageView.IMPORTANT_FOR_ACCESSIBILITY_NO
         }
         val layout = WindowManager.LayoutParams(
@@ -42,7 +42,7 @@ internal class HomeCurtain(private val service: AccessibilityService) {
         try {
             windows.addView(image, layout)
             view = image
-            AuraHomeService.trace("CURTAIN_ATTACHED snapshot=${HomeSnapshot.frame != null}")
+            AuraHomeService.trace("CURTAIN_ATTACHED snapshot=false")
         } catch (error: RuntimeException) {
             HomeGuard.detail = "Curtain unavailable: ${error.javaClass.simpleName}"
         }

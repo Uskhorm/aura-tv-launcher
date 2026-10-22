@@ -21,7 +21,7 @@ public final class HomeKeyProbeService extends AccessibilityService {
         Log.i("AuraProbe", "uptimeMs=" + SystemClock.uptimeMillis() + " " + message);
     }
     @Override protected void onServiceConnected() {
-        trace("CONNECTED flags=" + getServiceInfo().flags + " capabilities=" + getServiceInfo().getCapabilities());
+        trace("PROBE_V2 CONNECTED flags=" + getServiceInfo().flags + " capabilities=" + getServiceInfo().getCapabilities());
         IntentFilter filter = new IntentFilter(Intent.ACTION_CLOSE_SYSTEM_DIALOGS);
         filter.addAction("amazon.intent.action.HOME_PRESSED");
         filter.addAction("com.amazon.intent.action.HOME_PRESSED");
@@ -47,7 +47,7 @@ public final class HomeKeyProbeService extends AccessibilityService {
         return true;
     }
     @Override public void onAccessibilityEvent(AccessibilityEvent event) {
-        trace("WINDOW type=" + event.getEventType() + " package=" + event.getPackageName()
+        trace("EVENT type=" + AccessibilityEvent.eventTypeToString(event.getEventType()) + " windowId=" + event.getWindowId() + " package=" + event.getPackageName()
             + " class=" + event.getClassName() + " eventTime=" + event.getEventTime()
             + " AMAZON=" + "com.amazon.tv.launcher".contentEquals(event.getPackageName() == null ? "" : event.getPackageName()));
     }
