@@ -49,7 +49,9 @@ class YouTubeChannelResolver {
             return when {
                 parts[0].startsWith("@") && parts[0].length in 2..101 && parts.size <= 2 && (parts.size == 1 || parts[1] in setOf("videos", "streams", "featured", "shorts")) -> {
                     val handle = parts[0].drop(1)
-                    if (handle.any { !it.isLetterOrDigit() && it !in "_.-·" }) null
+                    if (handle.any { !it.isLetterOrDigit() && Character.getType(it) !in setOf(
+                            Character.NON_SPACING_MARK.toInt(), Character.COMBINING_SPACING_MARK.toInt(), Character.ENCLOSING_MARK.toInt()
+                        ) && it !in "_.-·" }) null
                     else "/@" + URLEncoder.encode(handle, "UTF-8").replace("+", "%20")
                 }
                 parts.size in 2..3 && parts[0] == "channel" && YouTubeFeedParser.channelIdPattern.matches(parts[1]) &&

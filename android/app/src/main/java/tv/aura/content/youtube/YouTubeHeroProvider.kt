@@ -25,6 +25,7 @@ class YouTubeHeroProvider : HeroProvider {
     private val attempted = ConcurrentHashMap<String, Long>()
 
     override suspend fun load(ctx: Context, config: AuraConfig): List<HeroItem> = withContext(Dispatchers.IO) {
+        val started = System.nanoTime()
         val now = System.currentTimeMillis()
         val channels = config.youtubeChannels.filter { YouTubeFeedParser.channelIdPattern.matches(it.id) }
             .distinctBy { it.id }.take(24)
@@ -59,7 +60,10 @@ class YouTubeHeroProvider : HeroProvider {
             }
             val selected = YouTubeFeedParser.select(videos.values.flatten(), now)
             // At most two cheap checks, run concurrently; RSS's LIVE text is not authoritative.
-            withTimeoutOrNull(1_000) {
+            val elapsedMs = (System.nanoTime() - started) / 1_000_000
+            // Spend optional watch-page budget only after a fast feed pass. A stalled channel must
+            // not turn a 6-second feed timeout into another multi-second batch of watch requests.
+            if (elapsedMs < 4_000) withTimeoutOrNull((5_000 - elapsedMs).coerceAtMost(1_000)) {
                 supervisorScope {
                     selected.filter { YouTubeFeedParser.liveCandidate(it.title) }.take(2).forEach { video -> launch {
                         val existing = live[video.id]

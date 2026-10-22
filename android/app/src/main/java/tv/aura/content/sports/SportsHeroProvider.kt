@@ -33,6 +33,7 @@ class SportsHeroProvider : HeroProvider {
             val sources = buildMap {
                 if (config.sportsFocus.any { it.equals("cricket", true) }) {
                     put("cricket-$day", "eventsday.php?d=$day&s=Cricket")
+                    put("india", "eventsnext.php?id=137143")
                     put("ipl", "eventsnextleague.php?id=4460")
                     put("t20", "eventsnextleague.php?id=4979")
                 }

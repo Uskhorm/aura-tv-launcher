@@ -26,7 +26,9 @@ internal object ContentHttp {
                 val buffer = ByteArray(8192)
                 while (true) {
                     currentCoroutineContext().ensureActive()
-                    check((System.nanoTime() - started) / 1_000_000 < 2_000) { "Feed deadline" }
+                    val remainingMs = 2_000 - (System.nanoTime() - started) / 1_000_000
+                    check(remainingMs > 0) { "Feed deadline" }
+                    connection.readTimeout = remainingMs.coerceAtMost(1_100).toInt().coerceAtLeast(1)
                     val count = input.read(buffer)
                     if (count < 0) break
                     check(output.size() + count <= maxBytes) { "Response too large" }

@@ -100,5 +100,7 @@ object YouTubeFeedParser {
 
     /** A title is only a candidate, never proof that a broadcast is currently live. */
     fun liveCandidate(title: String): Boolean = Regex("(?i)\\bLIVE\\b|लाइव|सीधा प्रसारण").containsMatchIn(title)
-    fun confirmsLive(watchHtml: String): Boolean = Regex("\"isLiveNow\"\\s*:\\s*true").containsMatchIn(watchHtml)
+    fun confirmsLive(watchHtml: String): Boolean = Regex(
+        "\"liveBroadcastDetails\"\\s*:\\s*\\{[^}]{0,2000}\"isLiveNow\"\\s*:\\s*true"
+    ).containsMatchIn(watchHtml)
 }
