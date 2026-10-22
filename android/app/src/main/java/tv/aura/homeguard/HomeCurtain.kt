@@ -7,17 +7,17 @@ import android.graphics.Canvas
 import android.os.SystemClock
 import android.view.Gravity
 import android.view.WindowManager
-import android.widget.ImageView
+import android.view.View
 
 /** Non-focusable, non-touchable and bounded: a failed launch can never trap the remote. */
 internal class HomeCurtain(private val service: AccessibilityService) {
     private val windows = service.getSystemService(WindowManager::class.java)
-    private var view: ImageView? = null
+    private var view: View? = null
     val visible get() = view != null
 
     fun show() {
         if (view != null) return
-        val image = object : ImageView(service) {
+        val image = object : View(service) {
             private var drawn = false
             override fun onDraw(canvas: Canvas) {
                 super.onDraw(canvas)
@@ -28,9 +28,8 @@ internal class HomeCurtain(private val service: AccessibilityService) {
             }
         }.apply {
             setBackgroundColor(Color.rgb(8, 12, 20))
-            scaleType = ImageView.ScaleType.CENTER_CROP
 
-            importantForAccessibility = ImageView.IMPORTANT_FOR_ACCESSIBILITY_NO
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }
         val layout = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
@@ -56,11 +55,10 @@ internal class HomeCurtain(private val service: AccessibilityService) {
         } else remove(current)
     }
 
-    private fun remove(current: ImageView) {
+    private fun remove(current: View) {
         if (view !== current) return
         view = null
         runCatching { windows.removeViewImmediate(current) }
-        current.setImageDrawable(null)
         AuraHomeService.trace("CURTAIN_HIDDEN")
     }
 }
