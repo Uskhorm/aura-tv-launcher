@@ -14,6 +14,7 @@ import android.provider.Settings
 import android.util.Log
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
+import androidx.core.content.ContextCompat
 
 /** Fire OS fallback: mask only Amazon HOME, never Settings/Alexa or arbitrary launcher windows. */
 class AuraHomeService : AccessibilityService() {
@@ -64,13 +65,12 @@ class AuraHomeService : AccessibilityService() {
         HomeSnapshot.preload(applicationContext)
         contentResolver.registerContentObserver(
             Settings.Secure.getUriFor(Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES), false, accessibilityObserver)
-        @Suppress("DEPRECATION")
-        registerReceiver(screenReceiver, IntentFilter().apply {
+        ContextCompat.registerReceiver(this, screenReceiver, IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_USER_PRESENT)
             addAction(Intent.ACTION_CLOSE_SYSTEM_DIALOGS)
-        })
+        }, ContextCompat.RECEIVER_EXPORTED)
         HomeGuard.detail = if (HomeGuard.homeOnFireEnabled(this)) "Passive: Home on Fire is enabled" else null
         trace("CONNECTED passive=${HomeGuard.homeOnFireEnabled(this)} flags=${serviceInfo.flags}")
     }

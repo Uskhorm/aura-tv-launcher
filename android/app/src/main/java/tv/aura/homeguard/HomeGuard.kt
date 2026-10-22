@@ -69,7 +69,7 @@ object HomeGuard {
             override fun onActivityPaused(activity: Activity) {
                 if (!isAuraHome(activity)) return
                 foreground = false
-                HomeSnapshot.capture(activity)
+                if (service != null) HomeSnapshot.capture(activity)
             }
             override fun onActivityCreated(activity: Activity, state: Bundle?) = Unit
             override fun onActivityStarted(activity: Activity) = Unit
