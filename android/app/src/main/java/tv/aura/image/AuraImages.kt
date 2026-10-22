@@ -43,6 +43,7 @@ class AuraImages(context: Context) : ImagePipeline, ComponentCallbacks2, AutoClo
     private val fetches = Semaphore(3)
     private val decodes = Semaphore(2)
     private val bitmapLocks = Array(64) { Mutex() }
+    private val rawTransfers = RawTransfers()
     private val blurLocks = Array(16) { Mutex() }
     private val paletteLocks = Array(16) { Mutex() }
     private val disk = ImageDiskCache(File(app.cacheDir, "img"))
@@ -81,16 +82,19 @@ class AuraImages(context: Context) : ImagePipeline, ComponentCallbacks2, AutoClo
         memory.get(key)?.let { return@safe it.asImageBitmap() }
         bitmapLocks[(key.hashCode() and Int.MAX_VALUE) % bitmapLocks.size].withLock {
             memory.get(key)?.let { return@withLock it.asImageBitmap() }
-            val file = disk.pin(key)
+            val rawKey = disk.key("raw-v1|$url")
+            val file = disk.pin(rawKey)
             try {
-                if (!file.exists()) {
-                    val fetched = fetches.withPermit { withTimeoutOrNull(12_000) { fetch(url, file); true } }
-                    if (fetched != true) return@withLock null
+                rawTransfers.withKey(rawKey) {
+                    if (!file.exists()) {
+                        fetches.withPermit { withTimeoutOrNull(12_000) { fetch(url, file) } }
+                    }
                 }
+                if (!file.exists()) return@withLock null
                 val image = decodes.withPermit { decode(file, width, height, alpha, url) }
                 if (image == null) disk.remove(file) else remember(key, image)
                 image?.asImageBitmap()
-            } finally { disk.release(key) }
+            } finally { disk.release(rawKey) }
         }
     }
 
@@ -110,9 +114,9 @@ class AuraImages(context: Context) : ImagePipeline, ComponentCallbacks2, AutoClo
                 val source = bitmap(url, 320, 180)?.asAndroidBitmap() ?: return@withLock null
                 val result = decodes.withPermit {
                     currentCoroutineContext().ensureActive()
-                    val started = SystemClock.elapsedRealtimeNanos()
+                    val started = android.os.Debug.threadCpuTimeNanos()
                     BackdropBlur.apply(source, strength).also {
-                        Log.d(TAG, "blur level=$strength size=${source.width}x${source.height} cpuMs=${(SystemClock.elapsedRealtimeNanos() - started) / 1_000_000.0}")
+                        Log.d(TAG, "blur level=$strength size=${source.width}x${source.height} cpuMs=${(android.os.Debug.threadCpuTimeNanos() - started) / 1_000_000.0}")
                     }
                 }
                 try { writeJpeg(file, result) } catch (_: java.io.IOException) {
@@ -168,11 +172,19 @@ class AuraImages(context: Context) : ImagePipeline, ComponentCallbacks2, AutoClo
     fun isMissingYouTubeMaxres(url: String): Boolean = missingMaxres.get(url) == true
 
     override fun trimMemory(level: Int) {
-        if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN || level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL) {
-            synchronized(this) { prefetchJob?.cancel() }
-            memory.evictAll(); palettes.evictAll(); pool.clear()
-        } else if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
-            memory.trimToSize(memoryBudgetBytes / 2); pool.clear()
+        when {
+            level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND || level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL -> {
+                synchronized(this) { prefetchJob?.cancel() }
+                memory.evictAll(); palettes.evictAll(); pool.clear()
+            }
+            level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW -> {
+                memory.trimToSize(memoryBudgetBytes / 2); pool.clear()
+            }
+            level == ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN -> {
+                // Every app launch hides this launcher. Keep the bounded hero working set warm.
+                synchronized(this) { prefetchJob?.cancel() }
+                pool.clear()
+            }
         }
     }
     override fun onTrimMemory(level: Int) = trimMemory(level)
@@ -182,8 +194,12 @@ class AuraImages(context: Context) : ImagePipeline, ComponentCallbacks2, AutoClo
 
     private suspend fun fetch(url: String, destination: File) {
         val parsed = URL(url)
-        require(parsed.protocol == "https" || parsed.protocol == "http")
+        require(parsed.protocol == "https" && parsed.userInfo == null && (parsed.port == -1 || parsed.port == 443))
+        val host = parsed.host.lowercase(java.util.Locale.ROOT)
+        require(host == "image.tmdb.org" || host == "images.metahub.space" ||
+            listOf("ytimg.com", "thesportsdb.com", "strem.io").any { host == it || host.endsWith(".$it") })
         val connection = parsed.openConnection() as HttpURLConnection
+        connection.instanceFollowRedirects = false
         val temp = disk.temporary()
         try {
             connection.connectTimeout = 4_000; connection.readTimeout = 4_000

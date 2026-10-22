@@ -1,5 +1,6 @@
 package tv.aura.image
 
+import com.kyant.capsule.ContinuousRoundedRectangle
 import android.content.pm.ApplicationInfo
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -82,9 +83,9 @@ class PerfSpikeActivity : ComponentActivity() {
                 val tiny = Bitmap.createScaledBitmap(full, 320, 180, true)
                 var blur: Bitmap? = null
                 for (level in 1..3) repeat(3) { run ->
-                    val started = android.os.SystemClock.elapsedRealtimeNanos()
+                    val started = android.os.Debug.threadCpuTimeNanos()
                     val sample = BackdropBlur.apply(tiny, level)
-                    Log.i("AuraPerfSpike", "BLUR level=$level run=$run size=320x180 cpuMs=${(android.os.SystemClock.elapsedRealtimeNanos() - started) / 1_000_000.0}")
+                    Log.i("AuraPerfSpike", "BLUR level=$level run=$run size=320x180 cpuMs=${(android.os.Debug.threadCpuTimeNanos() - started) / 1_000_000.0}")
                     if (level == 1 && run == 2) blur = sample else sample.recycle()
                 }
                 if (tiny !== full) tiny.recycle()
@@ -130,7 +131,7 @@ class PerfSpikeActivity : ComponentActivity() {
                     Box(Modifier.size(120.dp, 68.dp).graphicsLayer {
                         scaleX = scale; scaleY = scale
                         translationY = lift.dp.toPx()
-                    }.clip(RoundedCornerShape(8.dp)).background(Color(COLORS[index])), contentAlignment = Alignment.Center) {
+                    }.clip(if (scene == "compose-capsule") ContinuousRoundedRectangle(8.dp) else RoundedCornerShape(8.dp)).background(Color(COLORS[index])), contentAlignment = Alignment.Center) {
                         // BasicText avoids Material theme and extra state in this diagnostic scene.
                         androidx.compose.foundation.text.BasicText("App ${index + 1}", style = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 17.sp))
                     }
@@ -153,7 +154,7 @@ class PerfSpikeActivity : ComponentActivity() {
             val card = TextView(this).apply {
                 text = "App ${index + 1}"; textSize = 17f; gravity = Gravity.CENTER
                 setTextColor(AndroidColor.WHITE)
-                background = GradientDrawable().apply { setColor(COLORS[index]); cornerRadius = dp(8f).toFloat() }
+                this.background = GradientDrawable().apply { setColor(COLORS[index]); cornerRadius = dp(8f).toFloat() }
             }
             cards += card
             row.addView(card, LinearLayout.LayoutParams(dp(120f), dp(68f)).apply { if (index < 5) rightMargin = dp(18f) })
@@ -186,3 +187,4 @@ class PerfSpikeActivity : ComponentActivity() {
             0xff247a57.toInt(), 0xff7941af.toInt(), 0xffbd711c.toInt())
     }
 }
+
