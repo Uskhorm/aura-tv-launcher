@@ -97,15 +97,13 @@ class PerfSpikeActivity : ComponentActivity() {
         }
     }
 
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT || event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-            if (event.action == KeyEvent.ACTION_DOWN) {
-                selected.intValue = (selected.intValue + if (event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) 1 else -1).coerceIn(0, 5)
-                if (scene == "views") updateViewFocus()
-            }
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+            selected.intValue = (selected.intValue + if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) 1 else -1).coerceIn(0, 5)
+            if (scene == "views") updateViewFocus()
             return true
         }
-        return super.dispatchKeyEvent(event)
+        return super.onKeyDown(keyCode, event)
     }
 
     @Composable private fun ComposeScene(full: Bitmap, blur: Bitmap, moving: Boolean) {
