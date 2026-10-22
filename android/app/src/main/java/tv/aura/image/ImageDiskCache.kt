@@ -45,7 +45,8 @@ internal class ImageDiskCache(private val root: File, private val maxBytes: Long
     fun publish(temp: File, target: File) = synchronized(this) {
         initialize()
         val bytes = temp.length()
-        check(temp.renameTo(target)) { "Cannot publish image cache entry" }
+        java.nio.file.Files.move(temp.toPath(), target.toPath(),
+            java.nio.file.StandardCopyOption.ATOMIC_MOVE, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
         totalBytes -= entries.remove(target.name)?.bytes ?: 0
         entries[target.name] = Entry(bytes, System.currentTimeMillis())
         totalBytes += bytes
