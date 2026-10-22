@@ -30,19 +30,16 @@ class SportsHeroProvider : HeroProvider {
         val now = System.currentTimeMillis()
         try {
             val day = Instant.ofEpochMilli(now).atZone(SportsFeedParser.ukZone).toLocalDate().toString()
+            val focus = config.sportsFocus.filter { it.lowercase() in setOf("football", "f1") }
+                .ifEmpty { listOf("football", "f1") }
             val sources = buildMap {
-                if (config.sportsFocus.any { it.equals("cricket", true) }) {
-                    put("cricket-$day", "eventsday.php?d=$day&s=Cricket")
-                    put("india", "eventsnext.php?id=137143")
-                    put("ipl", "eventsnextleague.php?id=4460")
-                    put("t20", "eventsnextleague.php?id=4979")
-                }
-                if (config.sportsFocus.any { it.equals("football", true) }) {
+                if (focus.any { it.equals("football", true) }) {
                     put("epl-$day", "eventsday.php?d=$day&l=4328")
                     put("ucl-$day", "eventsday.php?d=$day&l=4480")
                     put("epl", "eventsnextleague.php?id=4328")
                     put("ucl", "eventsnextleague.php?id=4480")
                 }
+                if (focus.any { it.equals("f1", true) }) put("f1", "eventsnextleague.php?id=4370")
             }
             val cache = FeedDiskCache(File(ctx.cacheDir, "aura-sports-v1"))
             val events = ConcurrentHashMap<String, List<SportsFixture>>()
@@ -52,7 +49,7 @@ class SportsHeroProvider : HeroProvider {
                 if (cache.fresh("$key.json", now, 5 * 60_000L)) freshSources += key
             }
             val parallel = Semaphore(4)
-            withTimeoutOrNull(4_500) {
+            withTimeoutOrNull(3_500) {
                 supervisorScope {
                     sources.forEach { (key, path) -> launch {
                         parallel.withPermit {
@@ -70,27 +67,30 @@ class SportsHeroProvider : HeroProvider {
                 }
             }
             cache.prune(sources.keys.map { "$it.json" }.toSet(), 2 * 24 * 60 * 60_000L)
-            val selected = SportsFeedParser.select(events.values.flatten(), config.sportsFocus, now)
-            if (selected.isEmpty()) return@withContext fallback(config.sportsFocus)
+            val selected = SportsFeedParser.select(events.values.flatten(), focus, now)
+            if (selected.isEmpty()) return@withContext emptyList()
             val recentlyVerified = freshSources.flatMap { events[it].orEmpty() }.map { it.id }.toSet()
-            selected.map { event -> HeroItem(
+            val artwork = ConcurrentHashMap.newKeySet<String>()
+            withTimeoutOrNull(3_000) {
+                supervisorScope {
+                    selected.filter { it.backdropUrl != null && tv.aura.content.youtube.YouTubeFeedParser.isLatinTitle(it.title) }
+                        .forEach { event -> launch {
+                            parallel.withPermit {
+                                if (safely { SportsArtwork.isPremium(event.backdropUrl!!) } == true) artwork += event.id
+                            }
+                        } }
+                }
+            }
+            selected.filter { it.id in artwork }.map { event -> HeroItem(
                 id = "sports:${event.id}", appPackage = PACKAGE, title = event.title,
-                subtitle = listOfNotNull(event.league.takeIf { it.isNotBlank() }, event.venue).joinToString(" · "),
-                description = "Fixture times shown in UK local time · TheSportsDB",
+                subtitle = SportsFeedParser.badge(event, now, event.id in recentlyVerified),
                 backdropUrl = event.backdropUrl,
-                badge = SportsFeedParser.badge(event, now, event.id in recentlyVerified),
+                badge = null,
                 accentArgb = 0xFF53D5A4.toInt(), launch = LaunchTarget.App(PACKAGE),
             ) }
         } catch (cancel: CancellationException) { throw cancel }
-        catch (_: Exception) { fallback(config.sportsFocus) }
+        catch (_: Exception) { emptyList() }
     }
-
-    private fun fallback(focus: List<String>): List<HeroItem> = listOf(HeroItem(
-        id = "sports:home", appPackage = PACKAGE, title = "The next big moment",
-        subtitle = listOfNotNull("Cricket".takeIf { "cricket" in focus }, "Football".takeIf { "football" in focus }).joinToString(" · ").ifBlank { "Explore AK Sports" },
-        description = "Open AK Sports to explore available matches.",
-        accentArgb = 0xFF53D5A4.toInt(), launch = LaunchTarget.App(PACKAGE),
-    ))
 
     private inline fun <T> safely(block: () -> T): T? = try { block() }
         catch (cancel: CancellationException) { throw cancel } catch (_: Exception) { null }

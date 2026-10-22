@@ -70,9 +70,14 @@ object YouTubeFeedParser {
         return result
     }
 
+    fun isLatinTitle(title: String): Boolean = title.codePoints().allMatch { cp ->
+        Character.UnicodeScript.of(cp) in setOf(Character.UnicodeScript.LATIN,
+            Character.UnicodeScript.COMMON, Character.UnicodeScript.INHERITED)
+    }
+
     fun select(videos: List<YouTubeVideo>, nowMs: Long = System.currentTimeMillis(), limit: Int = 10): List<YouTubeVideo> {
         val counts = mutableMapOf<String, Int>()
-        return videos.asSequence().filter { it.publishedAtMs <= nowMs + 5 * 60_000 }
+        return videos.asSequence().filter { isLatinTitle(it.title) && isLatinTitle(it.channelName) && it.publishedAtMs <= nowMs + 5 * 60_000 }
             .distinctBy { it.id }.sortedByDescending { it.publishedAtMs }
             .filter { video ->
                 val count = counts.getOrDefault(video.channelId, 0)
