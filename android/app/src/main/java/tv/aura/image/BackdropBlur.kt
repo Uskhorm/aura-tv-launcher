@@ -7,9 +7,21 @@ internal object BackdropBlur {
     fun apply(source: Bitmap, level: Int): Bitmap {
         val width = source.width
         val height = source.height
-        var pixels = IntArray(width * height)
-        var scratch = IntArray(pixels.size)
+        val pixels = IntArray(width * height)
         source.getPixels(pixels, 0, width, 0, 0, width, height)
+        val blurred = PixelBlur.apply(pixels, width, height, level)
+        return Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565).also {
+            it.setPixels(blurred, 0, width, 0, 0, width, height)
+        }
+    }
+}
+
+/** Pure kernel, kept independent of Android so correctness can be checked in host JVM tests. */
+internal object PixelBlur {
+    fun apply(input: IntArray, width: Int, height: Int, level: Int): IntArray {
+        require(width > 0 && height > 0 && width.toLong() * height == input.size.toLong())
+        var pixels = input.copyOf()
+        var scratch = IntArray(pixels.size)
         val radius = when (level) { 1 -> 3; 2 -> 7; else -> 13 }
         repeat(3) {
             pass(pixels, scratch, width, height, radius, horizontal = true)
@@ -17,9 +29,7 @@ internal object BackdropBlur {
             pass(pixels, scratch, width, height, radius, horizontal = false)
             val swap2 = pixels; pixels = scratch; scratch = swap2
         }
-        return Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565).also {
-            it.setPixels(pixels, 0, width, 0, 0, width, height)
-        }
+        return pixels
     }
 
     private fun pass(src: IntArray, dst: IntArray, w: Int, h: Int, radius: Int, horizontal: Boolean) {

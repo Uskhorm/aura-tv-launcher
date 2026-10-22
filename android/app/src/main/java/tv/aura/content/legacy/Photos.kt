@@ -12,20 +12,24 @@ import tv.aura.ui.status.*
 import tv.aura.ui.ambient.*
 
 import android.content.Context
+import android.content.ComponentCallbacks2
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.LruCache
+import tv.aura.image.BackdropBlur
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /** Bundled landscape photography (Unsplash licence) used for the Top Shelf and the screensaver. */
-object Photos {
+object Photos : ComponentCallbacks2 {
     class Info(val file: String, val caption: String)
 
     val all = listOf(
@@ -49,59 +53,60 @@ object Photos {
         Info("p17", "Ice Cave"),
     )
 
-    private val sharp = LruCache<Int, ImageBitmap>(6)
-    private val soft = LruCache<Int, ImageBitmap>(12)
+    // D7: two sharp images and one small blurred copy.
+    private val sharp = LruCache<Int, ImageBitmap>(2)
+    private val soft = LruCache<Int, ImageBitmap>(1)
+    private var callbacksRegistered = false
 
     fun peek(i: Int): ImageBitmap? = sharp.get(i)
     fun peekBlur(i: Int): ImageBitmap? = soft.get(i)
 
     /** Decodes a photo scaled to the screen width. Call off the main thread. */
-    fun load(ctx: Context, i: Int): ImageBitmap {
-        sharp.get(i)?.let { return it }
-        val screenW = ctx.resources.displayMetrics.widthPixels.coerceAtLeast(1280)
-        val opts = BitmapFactory.Options().apply {
-            inPreferredConfig = Bitmap.Config.ARGB_8888
-            if (screenW < 1920) { inScaled = true; inDensity = 1920; inTargetDensity = screenW }
+    @Synchronized fun load(ctx: Context, i: Int): ImageBitmap {
+        if (!callbacksRegistered) {
+            ctx.applicationContext.registerComponentCallbacks(this)
+            callbacksRegistered = true
         }
-        val bmp = ctx.assets.open("photos/${all[i].file}.webp").use { BitmapFactory.decodeStream(it, null, opts)!! }
+        sharp.get(i)?.let { return it }
+        val path = "photos/${all[i].file}.webp"
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        ctx.assets.open(path).use { BitmapFactory.decodeStream(it, null, bounds) }
+        var sample = 1
+        while (kotlin.math.ceil(bounds.outWidth.toDouble() / sample) > 1280 ||
+            kotlin.math.ceil(bounds.outHeight.toDouble() / sample) > 720) sample *= 2
+        val opts = BitmapFactory.Options().apply {
+            inPreferredConfig = Bitmap.Config.RGB_565
+            inSampleSize = sample
+            inScaled = false
+        }
+        val bmp = ctx.assets.open(path).use { BitmapFactory.decodeStream(it, null, opts)!! }
         val img = bmp.asImageBitmap()
         sharp.put(i, img)
         if (soft.get(i) == null) soft.put(i, blur(bmp).asImageBitmap())
         return img
     }
 
-    fun loadBlur(ctx: Context, i: Int): ImageBitmap = soft.get(i) ?: run { load(ctx, i); soft.get(i)!! }
+    @Synchronized fun loadBlur(ctx: Context, i: Int): ImageBitmap = soft.get(i) ?: run {
+        val source = load(ctx, i)
+        soft.get(i) ?: blur(source.asAndroidBitmap()).asImageBitmap().also { soft.put(i, it) }
+    }
+
+    @Synchronized override fun onTrimMemory(level: Int) {
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN || level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL) {
+            sharp.evictAll(); soft.evictAll()
+        } else if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+            sharp.trimToSize(1); soft.evictAll()
+        }
+    }
+    override fun onLowMemory() = onTrimMemory(ComponentCallbacks2.TRIM_MEMORY_COMPLETE)
+    override fun onConfigurationChanged(newConfig: Configuration) = Unit
 
     /** Cheap, good-looking blur: shrink, box-blur three times, let the GPU scale it back up. */
     private fun blur(src: Bitmap): Bitmap {
         val w = 160
         val h = 90
         val small = Bitmap.createScaledBitmap(src, w, h, true)
-        val px = IntArray(w * h)
-        small.getPixels(px, 0, w, 0, 0, w, h)
-        repeat(3) { boxBlur(px, w, h, 3) }
-        return Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888)
-    }
-
-    private fun boxBlur(px: IntArray, w: Int, h: Int, r: Int) {
-        val tmp = IntArray(px.size)
-        fun pass(src: IntArray, dst: IntArray, len: Int, lines: Int, idx: (Int, Int) -> Int) {
-            for (l in 0 until lines) {
-                var rs = 0; var gs = 0; var bs = 0
-                for (k in -r..r) { val c = src[idx(l, k.coerceIn(0, len - 1))]; rs += c shr 16 and 255; gs += c shr 8 and 255; bs += c and 255 }
-                val n = 2 * r + 1
-                for (i in 0 until len) {
-                    dst[idx(l, i)] = (0xFF shl 24) or ((rs / n) shl 16) or ((gs / n) shl 8) or (bs / n)
-                    val add = src[idx(l, (i + r + 1).coerceAtMost(len - 1))]
-                    val sub = src[idx(l, (i - r).coerceAtLeast(0))]
-                    rs += (add shr 16 and 255) - (sub shr 16 and 255)
-                    gs += (add shr 8 and 255) - (sub shr 8 and 255)
-                    bs += (add and 255) - (sub and 255)
-                }
-            }
-        }
-        pass(px, tmp, w, h) { l, i -> l * w + i }
-        pass(tmp, px, h, w) { l, i -> i * w + l }
+        return try { BackdropBlur.apply(small, 1) } finally { if (small !== src) small.recycle() }
     }
 }
 
