@@ -19,7 +19,7 @@ class NuvioHeroProvider : HeroProvider {
 
     override suspend fun load(ctx: Context, config: AuraConfig): List<HeroItem> = withContext(Dispatchers.IO) {
         try {
-            val result = withTimeoutOrNull(6_800) {
+            val result = withTimeoutOrNull(4_500) {
                 coroutineScope {
                     val movie = async { MovieCatalogStore.catalog(ctx, "nuvio-movie", "$BASE/catalog/movie/top.json", "movie") }
                     val series = async { MovieCatalogStore.catalog(ctx, "nuvio-series", "$BASE/catalog/series/top.json", "series") }
@@ -30,14 +30,14 @@ class NuvioHeroProvider : HeroProvider {
                 .ifEmpty { MovieSeeds.nuvio.filter { it.type == "movie" } }
             val series = result?.second.orEmpty().ifEmpty { MovieCatalogStore.cached(ctx, "nuvio-series", "series") }
                 .ifEmpty { MovieSeeds.nuvio.filter { it.type == "series" } }
-            heroes(movies, series)
+            heroes(ctx, movies, series)
         } catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: Exception) { heroes(MovieSeeds.nuvio.filter { it.type == "movie" }, MovieSeeds.nuvio.filter { it.type == "series" }) }
+        catch (_: Exception) { heroes(ctx, MovieSeeds.nuvio.filter { it.type == "movie" }, MovieSeeds.nuvio.filter { it.type == "series" }) }
     }
 
-    private fun heroes(movies: List<MovieMeta>, series: List<MovieMeta>): List<HeroItem> {
+    private suspend fun heroes(ctx: Context, movies: List<MovieMeta>, series: List<MovieMeta>): List<HeroItem> {
         val today = MovieCatalogParser.londonToday()
-        return MovieCatalogParser.select(movies, series, today.toEpochDay()).map { meta ->
+        return PremiumMovieArt.filter(ctx, MovieCatalogParser.select(movies, series, today.toEpochDay())).map { meta ->
             MovieCatalogParser.hero(meta, id, PACKAGE, detailTarget(meta), today.year)
         }
     }

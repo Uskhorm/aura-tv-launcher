@@ -28,7 +28,7 @@ class PrimeHeroProvider : HeroProvider {
             val today = MovieCatalogParser.londonToday()
             var selected: List<MovieMeta> = emptyList()
             val enriched = java.util.concurrent.ConcurrentHashMap<String, MovieMeta>()
-            withTimeoutOrNull(6_800) {
+            withTimeoutOrNull(4_500) {
                 coroutineScope {
                     val movie = async { MovieCatalogStore.catalog(ctx, "prime-gb-movie", "$BASE/catalog/movie/$CATALOG.json", "movie") }
                     val series = async { MovieCatalogStore.catalog(ctx, "prime-gb-series", "$BASE/catalog/series/$CATALOG.json", "series") }
@@ -43,14 +43,14 @@ class PrimeHeroProvider : HeroProvider {
                 MovieCatalogStore.cached(ctx, "prime-gb-movie", "movie"),
                 MovieCatalogStore.cached(ctx, "prime-gb-series", "series"), today.toEpochDay(),
             )
-            selected.map { raw ->
+            tv.aura.content.nuvio.PremiumMovieArt.filter(ctx, selected.map { enriched[it.id] ?: it }).map { raw ->
                 val meta = enriched[raw.id] ?: raw
                 MovieCatalogParser.hero(meta, id, PrimeLinks.PACKAGE, PrimeLinks.target(meta), today.year)
             }
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) {
             val today = MovieCatalogParser.londonToday()
-            MovieSeeds.prime.map { MovieCatalogParser.hero(it, id, PrimeLinks.PACKAGE, PrimeLinks.target(it), today.year) }
+            tv.aura.content.nuvio.PremiumMovieArt.filter(ctx, MovieSeeds.prime).map { MovieCatalogParser.hero(it, id, PrimeLinks.PACKAGE, PrimeLinks.target(it), today.year) }
         }
     }
 

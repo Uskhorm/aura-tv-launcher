@@ -84,10 +84,10 @@ object MovieCatalogParser {
 
     fun hero(meta: MovieMeta, provider: String, pkg: String, launch: LaunchTarget, currentYear: Int): HeroItem = HeroItem(
         id = "$provider:${meta.id}", appPackage = pkg, title = meta.title,
-        subtitle = listOfNotNull(meta.year?.take(4), meta.genres.firstOrNull(), meta.rating?.let { "★ $it" }).joinToString(" · ")
-            .ifBlank { if (provider == "prime") "Prime Video · UK catalogue" else if (meta.type == "series") "Series" else "Movie" },
-        description = meta.description, backdropUrl = meta.backdrop, logoUrl = meta.logo, posterUrl = meta.poster,
-        badge = if (meta.year?.take(4)?.toIntOrNull() == currentYear) "NEW" else "TRENDING",
+        subtitle = listOfNotNull(meta.year?.take(4), meta.genres.firstOrNull()?.take(24))
+            .joinToString(" \u00b7 ").ifBlank { null },
+        description = null, backdropUrl = meta.backdrop, logoUrl = meta.logo, posterUrl = meta.poster,
+        badge = null,
         launch = launch,
     )
 
