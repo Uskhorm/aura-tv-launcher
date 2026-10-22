@@ -72,6 +72,7 @@ data class AuraConfig(
     val screensaverMinutes: Int = 10,
     val clickSounds: Boolean = true,
     val sportsFocus: List<String> = listOf("cricket", "football"),
+    val heroDisabled: Set<String> = emptySet(),
 )
 enum class Motion { Full, Reduced }
 
