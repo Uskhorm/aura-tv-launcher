@@ -71,7 +71,7 @@ data class AuraConfig(
     val city: String = "London", val lat: Double = 51.5072, val lon: Double = -0.1276,
     val screensaverMinutes: Int = 10,
     val clickSounds: Boolean = true,
-    val sportsFocus: List<String> = listOf("cricket", "football"),
+    val sportsFocus: List<String> = listOf("football", "f1"),
     val heroDisabled: Set<String> = emptySet(),
 )
 enum class Motion { Full, Reduced }
@@ -108,3 +108,4 @@ object Aura {
     lateinit var system: SystemBridge
     val heroProviders: MutableList<HeroProvider> = mutableListOf()
 }
+
