@@ -25,9 +25,18 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.launch
+import tv.aura.homeguard.HomeGuard
 
 class MainActivity : ComponentActivity() {
     private lateinit var state: HomeState
+    private var lastHomeReset = 0L
+    private val homeViewModel by lazy {
+        androidx.lifecycle.ViewModelProvider(this)[HomeViewModel::class.java]
+    }
 
     // Refresh the grid when apps are installed, updated or removed.
     private val packages = object : BroadcastReceiver() {
@@ -45,8 +54,18 @@ class MainActivity : ComponentActivity() {
         }
 
         state = HomeState(this)
-        state.reload()
         state.refreshWeather()
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                HomeGuard.resetRequests.collect { request ->
+                    if (request > lastHomeReset) {
+                        lastHomeReset = request
+                        state.goHome()
+                        homeViewModel.resetHome(state.focused?.packageName)
+                    }
+                }
+            }
+        }
 
         ContextCompat.registerReceiver(this, packages, IntentFilter().apply {
             addAction(Intent.ACTION_PACKAGE_ADDED)
@@ -61,7 +80,7 @@ class MainActivity : ComponentActivity() {
             val dm = resources.displayMetrics
             val d = minOf(dm.widthPixels / 960f, dm.heightPixels / 540f)
             CompositionLocalProvider(LocalDensity provides Density(d, 1f)) {
-                AuraRoot(state)
+                AuraRoot(state, homeViewModel)
             }
         }
     }
@@ -69,12 +88,20 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         // Home pressed while already home: jump back to the top, like tvOS.
-        if (intent.hasCategory(Intent.CATEGORY_HOME)) state.goHome()
+        if (intent.hasCategory(Intent.CATEGORY_HOME)) {
+            state.goHome()
+            homeViewModel.resetHome(state.focused?.packageName)
+        }
     }
 
     override fun onResume() {
         super.onResume()
         state.reload()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        homeViewModel.refreshIfStale()
     }
 
     override fun onDestroy() {

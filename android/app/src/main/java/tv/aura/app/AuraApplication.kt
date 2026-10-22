@@ -4,44 +4,40 @@ import android.app.Application
 import android.content.ComponentName
 import android.content.Intent
 import android.net.Uri
-import androidx.compose.ui.graphics.ImageBitmap
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import tv.aura.core.*
+import tv.aura.image.AuraImages
+import tv.aura.content.youtube.DefaultYouTubeChannels
+import tv.aura.content.youtube.YouTubeHeroProvider
+import tv.aura.content.sports.SportsHeroProvider
+import tv.aura.homeguard.HomeGuard
 
 /** Temporary lightweight dependencies; package owners replace each implementation during integration. */
 class AuraApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         Aura.config = BootstrapConfigStore()
-        Aura.images = BootstrapImagePipeline
+        Aura.images = AuraImages(this)
         Aura.system = BootstrapSystemBridge(this)
+        Aura.heroProviders.clear()
+        Aura.heroProviders += YouTubeHeroProvider()
+        Aura.heroProviders += SportsHeroProvider()
+        HomeGuard.initialize(this)
     }
 
-    override fun onTrimMemory(level: Int) {
-        super.onTrimMemory(level)
-        Aura.images.trimMemory(level)
-    }
 }
 
 private class BootstrapConfigStore : ConfigStore {
-    private val state = MutableStateFlow(AuraConfig())
+    private val state = MutableStateFlow(AuraConfig(youtubeChannels = DefaultYouTubeChannels.channels))
     override val config: StateFlow<AuraConfig> = state.asStateFlow()
     private val mutex = Mutex()
     override suspend fun update(transform: (AuraConfig) -> AuraConfig) {
         mutex.withLock { state.value = transform(state.value) }
     }
-}
-
-private object BootstrapImagePipeline : ImagePipeline {
-    override suspend fun bitmap(url: String, w: Int, h: Int, alpha: Boolean): ImageBitmap? = null
-    override suspend fun blurred(url: String, level: Int): ImageBitmap? = null
-    override suspend fun palette(url: String): AuraPalette? = null
-    override fun prefetch(urls: List<String>, w: Int, h: Int) = Unit
-    override fun trimMemory(level: Int) = Unit
 }
 
 private class BootstrapSystemBridge(private val app: Application) : SystemBridge {
