@@ -1,4 +1,15 @@
-package dev.erzen.home
+package tv.aura.app
+
+import tv.aura.home.R
+import tv.aura.design.*
+import tv.aura.system.*
+import tv.aura.content.legacy.*
+import tv.aura.ui.hero.*
+import tv.aura.ui.dock.*
+import tv.aura.ui.control.*
+import tv.aura.ui.settings.*
+import tv.aura.ui.status.*
+import tv.aura.ui.ambient.*
 
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -50,7 +61,7 @@ class MainActivity : ComponentActivity() {
             val dm = resources.displayMetrics
             val d = minOf(dm.widthPixels / 960f, dm.heightPixels / 540f)
             CompositionLocalProvider(LocalDensity provides Density(d, 1f)) {
-                HomeScreen(state)
+                AuraRoot(state)
             }
         }
     }

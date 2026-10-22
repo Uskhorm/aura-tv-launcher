@@ -4,17 +4,17 @@ plugins {
 }
 
 android {
-    namespace = "dev.erzen.home"
+    namespace = "tv.aura.home"
     compileSdk {
         version = release(37) { minorApiLevel = 2 }
     }
 
     defaultConfig {
-        applicationId = "dev.erzen.home"
-        minSdk = 24
+        applicationId = "tv.aura.home"
+        minSdk = 28
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = providers.gradleProperty("auraVersionCode").orElse("1").get().toInt()
+        versionName = "1.${(versionCode ?: 1) - 1}"
     }
 
     buildTypes {
@@ -38,6 +38,11 @@ android {
 dependencies {
     val bom = platform("androidx.compose:compose-bom:2026.09.00")
     implementation(bom)
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
+    testImplementation("junit:junit:4.13.2")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.animation:animation")

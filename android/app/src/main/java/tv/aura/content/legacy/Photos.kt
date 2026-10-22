@@ -1,4 +1,15 @@
-package dev.erzen.home
+package tv.aura.content.legacy
+
+import tv.aura.home.R
+import tv.aura.app.*
+import tv.aura.design.*
+import tv.aura.system.*
+import tv.aura.ui.hero.*
+import tv.aura.ui.dock.*
+import tv.aura.ui.control.*
+import tv.aura.ui.settings.*
+import tv.aura.ui.status.*
+import tv.aura.ui.ambient.*
 
 import android.content.Context
 import android.graphics.Bitmap

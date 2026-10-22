@@ -1,6 +1,6 @@
-# Home — a beautiful home screen for Android TV & Fire TV
+# Aura — a beautiful home screen for Android TV & Fire TV
 
-Home is a free, open-source launcher for Android TV, Google TV and Fire TV. It has a full-screen
+Aura is a free, open-source launcher for Android TV, Google TV and Fire TV. It has a full-screen
 photo Top Shelf, icons that lift and tilt as you move, a Control Center, and an Aerial screensaver.
 
 **Download:** [home-tv-launcher.vercel.app](https://home-tv-launcher.vercel.app) · or [`site/download/Home.apk`](site/download/Home.apk)
@@ -42,3 +42,5 @@ Not affiliated with Apple, Google or Amazon.
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+Aura is a fork of [ErzenXz/home-tv-launcher](https://github.com/ErzenXz/home-tv-launcher), by ErzenXz, retained under the original MIT license.
